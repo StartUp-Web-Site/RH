@@ -194,6 +194,7 @@ function initDb() {
       coverLetter: "Prezada equipe de RH, tenho acompanhado o crescimento da empresa e me identifico muito com a qualidade dos materiais publicados. Acredito que minha experi\xEAncia de mais de 7 anos em edi\xE7\xE3o de v\xEDdeo e motion graphics ajudar\xE1 a elevar ainda mais o n\xEDvel dos canais digitais de voc\xEAs. Estou pronto para come\xE7ar imediatamente!",
       resumeFileName: "thiago_martins_cv.pdf",
       resumeText: "Thiago Martins Silveira, residente em Curitiba PR. Formado em Design Gr\xE1fico pela UFPR. Especialista em Adobe After Effects e Premiere Pro, com vasta bagagem de cria\xE7\xE3o visual para redes sociais e Sound Design.",
+      resumeUrl: "/api/candidates/resume/download/cand-1_thiago_martins_cv.pdf",
       createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1e3 - 5 * 60 * 60 * 1e3).toISOString(),
       // 2 days and 5 hours ago
       status: "Entrevista",
@@ -292,6 +293,7 @@ function initDb() {
       coverLetter: "Ol\xE1! Sou engenheira de software com quase 7 anos de atua\xE7\xE3o pr\xE1tica em desenvolvimento de produtos digitais robustos e de alta escala. Meu foco atual \xE9 na constru\xE7\xE3o de solu\xE7\xF5es perform\xE1ticas usando o ecossistema React, TypeScript e Node.js. Adoro resolver problemas complexos e trabalhar em equipes focadas em inova\xE7\xE3o cont\xEDnua.",
       resumeFileName: "juliana_pires_cv.pdf",
       resumeText: "Juliana Pires de Almeida, desenvolvedora full stack de S\xE3o Paulo. Experi\xEAncia de 7 anos em React, Node, Next.js, TypeScript e SQL. Especialista em engenharia de software pela FIAP.",
+      resumeUrl: "/api/candidates/resume/download/cand-2_juliana_pires_cv.pdf",
       createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3 - 2 * 60 * 60 * 1e3).toISOString(),
       // 3 days ago
       status: "Em an\xE1lise",
@@ -368,6 +370,7 @@ function initDb() {
       coverLetter: "Prezada equipe de tecnologia, tenho grande admira\xE7\xE3o pelas solu\xE7\xF5es desenvolvidas por voc\xEAs. Atuo h\xE1 pouco mais de 2 anos como desenvolvedor full stack, lidando diariamente com React, Express e Tailwind CSS. Acredito que minha dedica\xE7\xE3o a aprender novas tecnologias e minha dedica\xE7\xE3o ao trabalho em equipe me tornam uma excelente adi\xE7\xE3o ao time.",
       resumeFileName: "mateus_henrique_cv.pdf",
       resumeText: "Mateus Henrique Santos, Belo Horizonte MG. Bacharel em Sistemas de Informa\xE7\xE3o pela PUC Minas. Atua\xE7\xE3o com React, Node, Express, Tailwind e PostgreSQL. Git e GitHub.",
+      resumeUrl: "/api/candidates/resume/download/cand-3_mateus_henrique_cv.pdf",
       createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1e3 - 10 * 60 * 60 * 1e3).toISOString(),
       // 4 days ago
       status: "Novo",
@@ -668,41 +671,44 @@ Retorne um objeto JSON estritamente mapeado com o esquema de resposta fornecido.
       throw new Error("Retorno vazio do Gemini API");
     }
   } catch (error) {
-    console.error("Erro na chamada do Gemini API:", error);
+    console.warn("Utilizando analisador de conting\xEAncia devido \xE0 indisponibilidade do Gemini:", error?.message || error);
     return generateContingencyParse(resumeText, resumeFileName, vacancy);
   }
+}
+function localSearchFallback(candidates, searchQuery) {
+  const q = searchQuery.toLowerCase();
+  return candidates.map((c) => {
+    let score = 0;
+    let matchReason = "";
+    const name = c.name.toLowerCase();
+    const skills = c.skills.map((s) => s.toLowerCase()).join(" ");
+    const city = c.city.toLowerCase();
+    const role = c.desiredRole.toLowerCase();
+    if (q.includes(city) && city.length > 2) {
+      score += 30;
+      matchReason += `\u2022 Reside em ${c.city}. `;
+    }
+    c.skills.forEach((skill) => {
+      if (q.includes(skill.toLowerCase())) {
+        score += 15;
+        matchReason += `\u2022 Domina ${skill}. `;
+      }
+    });
+    if (q.includes(role) || role.includes(q)) {
+      score += 40;
+      matchReason += `\u2022 Atua como ${c.desiredRole}. `;
+    }
+    if (score === 0 && (name.includes(q) || c.email.toLowerCase().includes(q))) {
+      score += 50;
+      matchReason += `\u2022 Nome ou e-mail correspondente. `;
+    }
+    return { id: c.id, matchReason: matchReason || "Compatibilidade geral encontrada.", score: Math.min(100, score || 20) };
+  }).filter((item) => item.score > 20).sort((a, b) => b.score - a.score);
 }
 async function searchCandidatesAi(candidates, searchQuery) {
   const ai = getAiClient();
   if (!ai || candidates.length === 0) {
-    const q = searchQuery.toLowerCase();
-    return candidates.map((c) => {
-      let score = 0;
-      let matchReason = "";
-      const name = c.name.toLowerCase();
-      const skills = c.skills.map((s) => s.toLowerCase()).join(" ");
-      const city = c.city.toLowerCase();
-      const role = c.desiredRole.toLowerCase();
-      if (q.includes(city) && city.length > 2) {
-        score += 30;
-        matchReason += `\u2022 Reside em ${c.city}. `;
-      }
-      c.skills.forEach((skill) => {
-        if (q.includes(skill.toLowerCase())) {
-          score += 15;
-          matchReason += `\u2022 Domina ${skill}. `;
-        }
-      });
-      if (q.includes(role) || role.includes(q)) {
-        score += 40;
-        matchReason += `\u2022 Atua como ${c.desiredRole}. `;
-      }
-      if (score === 0 && (name.includes(q) || c.email.toLowerCase().includes(q))) {
-        score += 50;
-        matchReason += `\u2022 Nome ou e-mail correspondente. `;
-      }
-      return { id: c.id, matchReason: matchReason || "Compatibilidade geral encontrada.", score: Math.min(100, score || 20) };
-    }).filter((item) => item.score > 20).sort((a, b) => b.score - a.score);
+    return localSearchFallback(candidates, searchQuery);
   }
   try {
     const candidatesSimplified = candidates.map((c) => ({
@@ -750,10 +756,10 @@ Retorne um array JSON com os candidatos correspondentes, ordenados por compatibi
     if (resultText) {
       return JSON.parse(resultText.trim());
     }
-    return [];
+    return localSearchFallback(candidates, searchQuery);
   } catch (error) {
-    console.error("Erro na pesquisa por IA:", error);
-    return [];
+    console.warn("Utilizando busca de conting\xEAncia devido \xE0 indisponibilidade do Gemini:", error?.message || error);
+    return localSearchFallback(candidates, searchQuery);
   }
 }
 function generateContingencyParse(resumeText, resumeFileName, vacancy) {
@@ -1180,7 +1186,7 @@ ${newCandidate.coverLetter || "Nenhuma informada"}
       res.status(500).json({ error: e.message });
     }
   });
-  app.put("/api/candidates/:id", requireAdmin, (req, res) => {
+  app.put("/api/candidates/:id", requireAdmin, async (req, res) => {
     try {
       const existing = db.getCandidateById(req.params.id);
       if (!existing) {
@@ -1224,9 +1230,89 @@ ${newCandidate.coverLetter || "Nenhuma informada"}
           details: "Anota\xE7\xF5es administrativas privadas foram editadas."
         });
       }
+      let updatedFields = { ...req.body };
+      if (req.body.vacancyId !== void 0 && (req.body.vacancyId !== existing.vacancyId || req.body.triggerMatch)) {
+        const vacancyId = req.body.vacancyId;
+        const vacancy = vacancyId ? db.getVacancyById(vacancyId) : void 0;
+        if (vacancy) {
+          try {
+            const experiencesText = (existing.experiences || []).map((exp) => `- ${exp.role} na ${exp.company} (${exp.period}): ${exp.description}`).join("\n");
+            const skillsText = (existing.skills || []).join(", ");
+            const languagesText = (existing.languages || []).map((lang) => `- ${lang.language} (${lang.level})`).join("\n");
+            const coursesText = (existing.courses || []).join(", ");
+            const profileText = `
+CANDIDATO: ${existing.name}
+Cargo Pretendido: ${existing.desiredRole}
+Escolaridade: ${existing.education}
+Localiza\xE7\xE3o: ${existing.city} - ${existing.state}
+Pretens\xE3o Salarial: R$ ${existing.salaryExpectation}
+Disponibilidade: ${existing.availability}
+
+CONTATOS:
+E-mail: ${existing.email}
+Telefone: ${existing.phone}
+LinkedIn: ${existing.linkedin || "N\xE3o informado"}
+GitHub: ${existing.github || "N\xE3o informado"}
+Portf\xF3lio: ${existing.portfolio || "N\xE3o informado"}
+
+EXPERI\xCANCIAS PROFISSIONAIS:
+${experiencesText || "Nenhuma detalhada"}
+
+HABILIDADES:
+${skillsText || "Nenhuma detalhada"}
+
+IDIOMAS:
+${languagesText || "Nenhum detalhado"}
+
+CURSOS E CERTIFICA\xC7\xD5ES:
+${coursesText || "Nenhum detalhado"}
+
+CARTA DE APRESENTA\xC7\xC3O:
+${existing.coverLetter || "Nenhuma informada"}
+
+TEXTO EXTRA\xCDDO DO CURR\xCDCULO F\xCDSICO:
+${existing.resumeText || "Nenhum extra\xEDdo"}
+`;
+            const aiData = await parseResumeAndScore(
+              profileText,
+              existing.resumeFileName || "curriculo.pdf",
+              vacancy
+            );
+            updatedFields.aiScore = aiData.aiScore;
+            updatedFields.aiReason = aiData.aiReason;
+            updatedFields.aiSummary = aiData.aiSummary;
+            updatedFields.aiInsights = aiData.aiInsights;
+            updatedFields.vacancyTitle = vacancy.title;
+            updatedFields.tags = [.../* @__PURE__ */ new Set([...existing.tags || [], ...aiData.tags || []])];
+            historyLogs.push({
+              id: `log-${Date.now()}-ai-match-update`,
+              date: (/* @__PURE__ */ new Date()).toISOString(),
+              user: "Sistema IA",
+              action: "Novo Match Calculado",
+              details: `Compara\xE7\xE3o realizada com a vaga "${vacancy.title}". Compatibilidade determinada em ${aiData.aiScore}%.`
+            });
+          } catch (err) {
+            console.error("Erro ao recalcular compatibilidade por IA:", err);
+          }
+        } else {
+          updatedFields.vacancyId = null;
+          updatedFields.vacancyTitle = null;
+          updatedFields.aiScore = void 0;
+          updatedFields.aiReason = void 0;
+          updatedFields.aiInsights = void 0;
+          updatedFields.aiSummary = "Candidato inscrito via Candidatura Espont\xE2nea. Seus dados est\xE3o salvos e ele poder\xE1 ser associado a vagas futuramente para obter a an\xE1lise inteligente.";
+          historyLogs.push({
+            id: `log-${Date.now()}-ai-match-unlinked`,
+            date: (/* @__PURE__ */ new Date()).toISOString(),
+            user: updater,
+            action: "Desvinculado de Vaga",
+            details: "O candidato foi alterado para Candidatura Espont\xE2nea."
+          });
+        }
+      }
       const updatedCandidate = {
         ...existing,
-        ...req.body,
+        ...updatedFields,
         history: historyLogs,
         id: existing.id
         // protect ID
@@ -1255,6 +1341,15 @@ ${newCandidate.coverLetter || "Nenhuma informada"}
       const safeFilename = import_path.default.basename(filename);
       const filePath = import_path.default.join(RESUMES_DIR, safeFilename);
       if (!import_fs.default.existsSync(filePath)) {
+        if (safeFilename.startsWith("cand-") || safeFilename.endsWith("_cv.pdf") || safeFilename === "mock_cv.pdf") {
+          const mockPath = import_path.default.join(RESUMES_DIR, "mock_cv.pdf");
+          if (!import_fs.default.existsSync(mockPath)) {
+            import_fs.default.writeFileSync(mockPath, "%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n2 0 obj\n<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\nendobj\n3 0 obj\n<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 595.275 841.889]\n/Resources << >>\n/Contents 4 0 R\n>>\nendobj\n4 0 obj\n<<\n/Length 55\n>>\nstream\nBT\n/F1 12 Tf\n72 712 Td\n(Curriculo Base - ATS Vanguard) Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\n0000000219 00000 n\ntrailer\n<<\n/Size 5\n/Root 1 0 R\n>>\nstartxref\n323\n%%EOF");
+          }
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `inline; filename="${safeFilename.substring(safeFilename.indexOf("_") + 1)}"`);
+          return res.sendFile(mockPath);
+        }
         return res.status(404).json({ error: "Curr\xEDculo n\xE3o encontrado." });
       }
       res.setHeader("Content-Type", "application/pdf");
