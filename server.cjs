@@ -1019,6 +1019,7 @@ async function startServer() {
         coverLetter,
         resumeFileName,
         resumeText,
+        fileBase64,
         aiScore,
         aiReason,
         aiSummary,
@@ -1085,7 +1086,8 @@ async function startServer() {
           const aiData = await parseResumeAndScore(
             newCandidate.resumeText || `${newCandidate.name} - ${newCandidate.desiredRole}. Habilidades: ${newCandidate.skills.join(", ")}`,
             newCandidate.resumeFileName,
-            vacancy
+            vacancy,
+            fileBase64 ? { data: fileBase64, mimeType: "application/pdf" } : void 0
           );
           newCandidate.aiScore = aiData.aiScore;
           newCandidate.aiReason = aiData.aiReason;
