@@ -24,6 +24,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // server.ts
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
 var import_vite = require("vite");
 
 // src/server/db.ts
@@ -835,6 +836,10 @@ function generateContingencyParse(resumeText, resumeFileName, vacancy) {
 async function startServer() {
   const app = (0, import_express.default)();
   const PORT = 3e3;
+  const RESUMES_DIR = import_path.default.join(process.cwd(), "curriculos");
+  if (!import_fs.default.existsSync(RESUMES_DIR)) {
+    import_fs.default.mkdirSync(RESUMES_DIR, { recursive: true });
+  }
   app.use(import_express.default.json({ limit: "50mb" }));
   app.use(import_express.default.urlencoded({ extended: true, limit: "50mb" }));
   const requireAdmin = (req, res, next) => {
@@ -1036,6 +1041,19 @@ async function startServer() {
           return res.status(400).json({ error: "Voc\xEA j\xE1 se candidatou para esta vaga. Nosso time de recrutamento j\xE1 est\xE1 avaliando seu curr\xEDculo!" });
         }
       }
+      let savedResumePath = "";
+      if (fileBase64 && resumeFileName && submissionMode !== "form_only") {
+        try {
+          const safeName = resumeFileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+          const fileId = `cand-${Date.now()}`;
+          const fileNameOnDisk = `${fileId}_${safeName}`;
+          const filePath = import_path.default.join(RESUMES_DIR, fileNameOnDisk);
+          import_fs.default.writeFileSync(filePath, Buffer.from(fileBase64, "base64"));
+          savedResumePath = `/api/candidates/resume/download/${fileNameOnDisk}`;
+        } catch (fileErr) {
+          console.error("Erro ao gravar curr\xEDculo em disco:", fileErr);
+        }
+      }
       const newCandidate = {
         id: `cand-${Date.now()}`,
         vacancyId,
@@ -1058,7 +1076,7 @@ async function startServer() {
         skills: Array.isArray(skills) ? skills : [],
         languages: Array.isArray(languages) ? languages : [],
         coverLetter: coverLetter || "",
-        resumeFileName: resumeFileName || "curriculo_enviado.pdf",
+        resumeFileName: resumeFileName || "",
         resumeText: resumeText || "",
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         status: "Novo",
@@ -1072,22 +1090,59 @@ async function startServer() {
             date: (/* @__PURE__ */ new Date()).toISOString(),
             user: "Sistema",
             action: "Candidatura Recebida",
-            details: "O candidato preencheu o formul\xE1rio e enviou sua candidatura com sucesso."
+            details: isPdfOnly ? "O candidato enviou sua candidatura no modo Apenas PDF." : "O candidato preencheu o formul\xE1rio e enviou sua candidatura com sucesso."
           }
         ],
+        resumeUrl: savedResumePath || void 0,
         aiScore: aiScore ? Number(aiScore) : void 0,
         aiReason: aiReason || void 0,
         aiSummary: aiSummary || void 0,
         aiInsights: aiInsights || void 0
       };
-      if (!newCandidate.aiScore) {
+      if (isPdfOnly) {
+        newCandidate.aiSummary = "Candidato inscrito via Apenas PDF. O curr\xEDculo f\xEDsico est\xE1 armazenado na pasta de curr\xEDculos do servidor para avalia\xE7\xE3o manual.";
+        newCandidate.tags = ["Apenas PDF", ...newCandidate.tags];
+        newCandidate.history.push({
+          id: `log-${Date.now()}-pdf-only`,
+          date: (/* @__PURE__ */ new Date()).toISOString(),
+          user: "Sistema",
+          action: "Triagem Pendente",
+          details: "Candidatura recebida no modo Apenas PDF. Fa\xE7a a triagem e leitura manual abrindo o arquivo PDF anexo."
+        });
+      } else {
         const vacancy = vacancyId ? db.getVacancyById(vacancyId) : void 0;
         try {
+          const experiencesText = newCandidate.experiences.map((exp) => `- ${exp.role} na ${exp.company} (${exp.period}): ${exp.description}`).join("\n");
+          const skillsText = newCandidate.skills.join(", ");
+          const languagesText = newCandidate.languages.map((lang) => `- ${lang.language} (${lang.level})`).join("\n");
+          const coursesText = newCandidate.courses.join(", ");
+          const profileText = `
+CANDIDATO: ${newCandidate.name}
+Cargo Pretendido: ${newCandidate.desiredRole}
+Escolaridade: ${newCandidate.education}
+Pretens\xE3o Salarial: ${newCandidate.salaryExpectation}
+Disponibilidade: ${newCandidate.availability}
+
+EXPERI\xCANCIAS PROFISSIONAIS:
+${experiencesText || "Nenhuma informada"}
+
+COMPET\xCANCIAS / SKILLS:
+${skillsText || "Nenhuma informada"}
+
+IDIOMAS:
+${languagesText || "Nenhum informado"}
+
+CURSOS & CERTIFICA\xC7\xD5ES:
+${coursesText || "Nenhum informado"}
+
+CARTA DE APRESENTA\xC7\xC3O:
+${newCandidate.coverLetter || "Nenhuma informada"}
+`;
           const aiData = await parseResumeAndScore(
-            newCandidate.resumeText || `${newCandidate.name} - ${newCandidate.desiredRole}. Habilidades: ${newCandidate.skills.join(", ")}`,
-            newCandidate.resumeFileName,
-            vacancy,
-            fileBase64 ? { data: fileBase64, mimeType: "application/pdf" } : void 0
+            profileText,
+            newCandidate.resumeFileName || "formulario.pdf",
+            vacancy
+            // Do NOT pass fileBase64, skipping PDF reading entirely as requested
           );
           newCandidate.aiScore = aiData.aiScore;
           newCandidate.aiReason = aiData.aiReason;
@@ -1098,11 +1153,11 @@ async function startServer() {
             id: `log-${Date.now()}-ai-retro`,
             date: (/* @__PURE__ */ new Date()).toISOString(),
             user: "Sistema IA",
-            action: "An\xE1lise de Curr\xEDculo",
-            details: `Curr\xEDculo processado automaticamente pela IA ap\xF3s submiss\xE3o f\xEDsica. Compatibilidade de ${aiData.aiScore}% detectada.`
+            action: "An\xE1lise de Formul\xE1rio",
+            details: `Dados do formul\xE1rio avaliados automaticamente pela IA. Compatibilidade de ${aiData.aiScore}% detectada.`
           });
         } catch (err) {
-          console.error("Erro na an\xE1lise de IA retroativa:", err);
+          console.error("Erro na an\xE1lise de IA baseada no formul\xE1rio:", err);
         }
       }
       db.saveCandidate(newCandidate);
@@ -1179,6 +1234,21 @@ async function startServer() {
       }
     } catch (e) {
       res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/candidates/resume/download/:filename", (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const safeFilename = import_path.default.basename(filename);
+      const filePath = import_path.default.join(RESUMES_DIR, safeFilename);
+      if (!import_fs.default.existsSync(filePath)) {
+        return res.status(404).json({ error: "Curr\xEDculo n\xE3o encontrado." });
+      }
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${safeFilename.substring(safeFilename.indexOf("_") + 1)}"`);
+      res.sendFile(filePath);
+    } catch (e) {
+      res.status(500).json({ error: "Erro ao abrir o curr\xEDculo." });
     }
   });
   app.get("/api/export/csv", requireAdmin, (req, res) => {
