@@ -153,6 +153,7 @@ function initDb() {
       id: "cand-1",
       vacancyId: "vaga-2",
       vacancyTitle: "Motion Designer & Editor de V\xEDdeo",
+      submissionMode: "both",
       name: "Thiago Martins Silveira",
       email: "thiago.motion@gmail.com",
       phone: "(41) 99876-5432",
@@ -249,6 +250,7 @@ function initDb() {
       id: "cand-2",
       vacancyId: "vaga-1",
       vacancyTitle: "Desenvolvedor Full Stack React/Node",
+      submissionMode: "both",
       name: "Juliana Pires de Almeida",
       email: "juliana.pires@outlook.com",
       phone: "(11) 98765-4321",
@@ -332,6 +334,7 @@ function initDb() {
       id: "cand-3",
       vacancyId: "vaga-1",
       vacancyTitle: "Desenvolvedor Full Stack React/Node",
+      submissionMode: "both",
       name: "Mateus Henrique Santos",
       email: "mateus.henrique@gmail.com",
       phone: "(31) 99123-4567",
@@ -1102,6 +1105,9 @@ async function startServer() {
       if (isPdfOnly) {
         newCandidate.aiSummary = "Candidato inscrito via Apenas PDF. O curr\xEDculo f\xEDsico est\xE1 armazenado na pasta de curr\xEDculos do servidor para avalia\xE7\xE3o manual.";
         newCandidate.tags = ["Apenas PDF", ...newCandidate.tags];
+        newCandidate.aiScore = void 0;
+        newCandidate.aiReason = void 0;
+        newCandidate.aiInsights = void 0;
         newCandidate.history.push({
           id: `log-${Date.now()}-pdf-only`,
           date: (/* @__PURE__ */ new Date()).toISOString(),
@@ -1111,12 +1117,13 @@ async function startServer() {
         });
       } else {
         const vacancy = vacancyId ? db.getVacancyById(vacancyId) : void 0;
-        try {
-          const experiencesText = newCandidate.experiences.map((exp) => `- ${exp.role} na ${exp.company} (${exp.period}): ${exp.description}`).join("\n");
-          const skillsText = newCandidate.skills.join(", ");
-          const languagesText = newCandidate.languages.map((lang) => `- ${lang.language} (${lang.level})`).join("\n");
-          const coursesText = newCandidate.courses.join(", ");
-          const profileText = `
+        if (vacancy) {
+          try {
+            const experiencesText = newCandidate.experiences.map((exp) => `- ${exp.role} na ${exp.company} (${exp.period}): ${exp.description}`).join("\n");
+            const skillsText = newCandidate.skills.join(", ");
+            const languagesText = newCandidate.languages.map((lang) => `- ${lang.language} (${lang.level})`).join("\n");
+            const coursesText = newCandidate.courses.join(", ");
+            const profileText = `
 CANDIDATO: ${newCandidate.name}
 Cargo Pretendido: ${newCandidate.desiredRole}
 Escolaridade: ${newCandidate.education}
@@ -1138,26 +1145,32 @@ ${coursesText || "Nenhum informado"}
 CARTA DE APRESENTA\xC7\xC3O:
 ${newCandidate.coverLetter || "Nenhuma informada"}
 `;
-          const aiData = await parseResumeAndScore(
-            profileText,
-            newCandidate.resumeFileName || "formulario.pdf",
-            vacancy
-            // Do NOT pass fileBase64, skipping PDF reading entirely as requested
-          );
-          newCandidate.aiScore = aiData.aiScore;
-          newCandidate.aiReason = aiData.aiReason;
-          newCandidate.aiSummary = aiData.aiSummary;
-          newCandidate.aiInsights = aiData.aiInsights;
-          newCandidate.tags = [.../* @__PURE__ */ new Set([...newCandidate.tags || [], ...aiData.tags || []])];
-          newCandidate.history.push({
-            id: `log-${Date.now()}-ai-retro`,
-            date: (/* @__PURE__ */ new Date()).toISOString(),
-            user: "Sistema IA",
-            action: "An\xE1lise de Formul\xE1rio",
-            details: `Dados do formul\xE1rio avaliados automaticamente pela IA. Compatibilidade de ${aiData.aiScore}% detectada.`
-          });
-        } catch (err) {
-          console.error("Erro na an\xE1lise de IA baseada no formul\xE1rio:", err);
+            const aiData = await parseResumeAndScore(
+              profileText,
+              newCandidate.resumeFileName || "formulario.pdf",
+              vacancy
+              // Do NOT pass fileBase64, skipping PDF reading entirely as requested
+            );
+            newCandidate.aiScore = aiData.aiScore;
+            newCandidate.aiReason = aiData.aiReason;
+            newCandidate.aiSummary = aiData.aiSummary;
+            newCandidate.aiInsights = aiData.aiInsights;
+            newCandidate.tags = [.../* @__PURE__ */ new Set([...newCandidate.tags || [], ...aiData.tags || []])];
+            newCandidate.history.push({
+              id: `log-${Date.now()}-ai-retro`,
+              date: (/* @__PURE__ */ new Date()).toISOString(),
+              user: "Sistema IA",
+              action: "An\xE1lise de Formul\xE1rio",
+              details: `Dados do formul\xE1rio avaliados automaticamente pela IA. Compatibilidade de ${aiData.aiScore}% detectada.`
+            });
+          } catch (err) {
+            console.error("Erro na an\xE1lise de IA baseada no formul\xE1rio:", err);
+          }
+        } else {
+          newCandidate.aiScore = void 0;
+          newCandidate.aiReason = void 0;
+          newCandidate.aiInsights = void 0;
+          newCandidate.aiSummary = "Candidato inscrito via Candidatura Espont\xE2nea. Seus dados est\xE3o salvos e ele poder\xE1 ser associado a vagas futuramente para obter a an\xE1lise inteligente.";
         }
       }
       db.saveCandidate(newCandidate);
