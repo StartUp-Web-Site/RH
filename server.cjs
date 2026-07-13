@@ -998,6 +998,7 @@ async function startServer() {
     try {
       const {
         vacancyId,
+        submissionMode,
         name,
         email,
         phone,
@@ -1024,8 +1025,9 @@ async function startServer() {
         aiInsights,
         tags
       } = req.body;
-      if (!name || !email || !phone || !city || !state) {
-        return res.status(400).json({ error: "Os campos Nome, E-mail, Telefone, Cidade e Estado s\xE3o obrigat\xF3rios." });
+      const isPdfOnly = submissionMode === "pdf_only";
+      if (!name || !email || !phone || !isPdfOnly && (!city || !state)) {
+        return res.status(400).json({ error: "Os campos Nome, E-mail e Telefone s\xE3o obrigat\xF3rios." });
       }
       if (vacancyId) {
         const existing = db.getCandidates().find((c) => c.email === email && c.vacancyId === vacancyId);
@@ -1036,11 +1038,12 @@ async function startServer() {
       const newCandidate = {
         id: `cand-${Date.now()}`,
         vacancyId,
+        submissionMode: submissionMode || (resumeFileName ? "both" : "form_only"),
         name,
         email,
         phone,
-        city,
-        state,
+        city: city || "",
+        state: state || "",
         birthDate: birthDate || "",
         education: education || "Ensino M\xE9dio Completo",
         desiredRole: desiredRole || "Candidatura Geral",
